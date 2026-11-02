@@ -1,0 +1,480 @@
+// Workdone - Professional Home Services Marketplace
+// Prisma Schema Definition for PostgreSQL Production Compatibility
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  PROFESSIONAL
+  ADMIN
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING_REVIEW
+  IDENTITY_VERIFIED
+  BUSINESS_VERIFIED
+  FULLY_VERIFIED
+  REJECTED
+}
+
+enum AvailabilityStatus {
+  AVAILABLE
+  BUSY
+  TEMPORARILY_UNAVAILABLE
+}
+
+enum BookingStatus {
+  REQUESTED
+  ACCEPTED
+  REJECTED
+  RESCHEDULE_PROPOSED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum EstimateStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REVISED
+  DECLINED
+  EXPIRED
+}
+
+enum ComplaintStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+enum ComplaintCategory {
+  INCOMPLETE_WORK
+  SCOPE_DISPUTE
+  SUSPECTED_FRAUD
+  INAPPROPRIATE_CONDUCT
+  NO_SHOW
+  OTHER
+}
+
+model User {
+  id                   String               @id @default(uuid())
+  email                String               @unique
+  passwordHash         String
+  role                 UserRole             @default(CUSTOMER)
+  name                 String
+  phone                String?
+  avatarUrl            String?
+  isActive             Boolean              @default(true)
+  isEmailVerified      Boolean              @default(false)
+  isPhoneVerified      Boolean              @default(false)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  customerProfile      CustomerProfile?
+  professionalProfile  ProfessionalProfile?
+  notifications        Notification[]
+  auditLogs            AuditLog[]
+  reviewReports        ReviewReport[]
+  complaintsSubmitted  CustomerComplaint[]  @relation("ComplaintsSubmitted")
+
+  @@index([email])
+  @@index([role])
+}
+
+model CustomerProfile {
+  id               String              @id @default(uuid())
+  userId           String              @unique
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address          String?
+  city             String?
+  locality         String?
+  pinCode          String?
+  preferredContact String?             @default("IN_APP")
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  bookings         Booking[]           @relation("CustomerBookings")
+  reviews          Review[]            @relation("CustomerReviews")
+  savedPros        SavedProfessional[]
+
+  @@index([city])
+}
+
+model ProfessionalProfile {
+  id                   String                @id @default(uuid())
+  userId               String                @unique
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName         String?
+  bio                  String
+  yearsExperience      Int                   @default(1)
+  city                 String
+  locality             String?
+  pinCode              String?
+  languages            String?               @default("English")
+  workingHours         String?               @default("9:00 AM - 6:00 PM, Mon-Sat")
+  startingPrice        Float?                @default(0)
+  pricingNotes         String?
+  availabilityStatus   AvailabilityStatus    @default(AVAILABLE)
+  availabilityUpdatedAt DateTime             @default(now())
+  verificationStatus   VerificationStatus    @default(UNVERIFIED)
+  verificationNotes    String?
+  averageRating        Float                 @default(0.0)
+  totalReviews         Int                   @default(0)
+  completedJobsCount   Int                   @default(0)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  services             ProfessionalService[]
+  serviceAreas         ServiceArea[]
+  portfolios           PortfolioProject[]
+  availabilitySchedules AvailabilitySchedule[]
+  unavailableDates     UnavailableDate[]
+  bookings             Booking[]             @relation("ProBookings")
+  reviews              Review[]              @relation("ProReviews")
+  verificationRecords  VerificationRecord[]
+  savedByCustomers     SavedProfessional[]
+  complaintsReceived   CustomerComplaint[]   @relation("ComplaintsReceived")
+
+  @@index([city])
+  @@index([verificationStatus])
+  @@index([availabilityStatus])
+  @@index([averageRating])
+}
+
+model ServiceCategory {
+  id          String                @id @default(uuid())
+  slug        String                @unique
+  name        String
+  description String
+  iconName    String
+  bannerImage String?
+  sortOrder   Int                   @default(0)
+  isActive    Boolean               @default(true)
+  createdAt   DateTime              @default(now())
+
+  services    ProfessionalService[]
+  bookings    Booking[]
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+model ProfessionalService {
+  id            String              @id @default(uuid())
+  proProfileId  String
+  categoryId    String
+  serviceName   String
+  description   String?
+  baseRate      Float?
+  rateType      String?             @default("PER_JOB") // PER_HOUR, PER_JOB, PER_SQFT
+  isPrimary     Boolean             @default(false)
+
+  proProfile    ProfessionalProfile @relation(fields: [proProfileId], references: [id], onDelete: Cascade)
+  category      ServiceCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([proProfileId])
+  @@index([categoryId])
+}
+
+model ServiceArea {
+  id           String              @id @default(uuid())
+  proProfileId String
+  city         String
+  locality     String
+  pinCode      String?
+
+  proProfile   ProfessionalProfile @relation(fields: [proProfileId], references: [id], onDelete: Cascade)
+
+  @@index([proProfileId])
+  @@index([city, locality])
+}
+
+model PortfolioProject {
+  id              String              @id @default(uuid())
+  proProfileId    String
+  title           String
+  description     String
+  categoryName    String
+  projectCost     Float?
+  completionDate  DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  proProfile      ProfessionalProfile @relation(fields: [proProfileId], references: [id], onDelete: Cascade)
+  media           PortfolioMedia[]
+
+  @@index([proProfileId])
+}
+
+model PortfolioMedia {
+  id          String           @id @default(uuid())
+  projectId   String
+  mediaUrl    String
+  caption     String?
+  isCover     Boolean          @default(false)
+  sortOrder   Int              @default(0)
+
+  project     PortfolioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model AvailabilitySchedule {
+  id           String              @id @default(uuid())
+  proProfileId String
+  dayOfWeek    Int                 // 0=Sunday, 1=Monday, ..., 6=Saturday
+  startTime    String              // "09:00"
+  endTime      String              // "18:00"
+  isWorkingDay Boolean             @default(true)
+
+  proProfile   ProfessionalProfile @relation(fields: [proProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([proProfileId, dayOfWeek])
+}
+
+model UnavailableDate {
+  id           String              @id @default(uuid())
+  proProfileId String
+  date         DateTime
+  reason       String?
+
+  proProfile   ProfessionalProfile @relation(fields: [proProfileId], references: [id], onDelete: Cascade)
+
+  @@index([proProfileId, date])
+}
+
+model Booking {
+  id                 String                 @id @default(uuid())
+  bookingNumber      String                 @unique
+  customerId         String
+  proProfileId       String
+  categoryId         String
+  serviceTitle       String
+  description        String
+  approximateLocation String
+  city               String
+  locality           String?
+  pinCode            String?
+  requestedDate      DateTime
+  confirmedDate      DateTime?
+  rescheduledDate    DateTime?
+  budgetRangeMin     Float?
+  budgetRangeMax     Float?
+  finalAmount        Float?
+  status             BookingStatus          @default(REQUESTED)
+  cancellationReason String?
+  rescheduleNotes    String?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  customer           CustomerProfile        @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
+  proProfile         ProfessionalProfile    @relation("ProBookings", fields: [proProfileId], references: [id], onDelete: Cascade)
+  category           ServiceCategory        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  statusHistory      BookingStatusHistory[]
+  estimates          Estimate[]
+  review             Review?
+  complaints         CustomerComplaint[]
+
+  @@index([customerId])
+  @@index([proProfileId])
+  @@index([status])
+  @@index([requestedDate])
+}
+
+model BookingStatusHistory {
+  id           String        @id @default(uuid())
+  bookingId    String
+  fromStatus   BookingStatus?
+  toStatus     BookingStatus
+  actorRole    UserRole
+  actorId      String
+  note         String?
+  createdAt    DateTime      @default(now())
+
+  booking      Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+}
+
+model Estimate {
+  id               String             @id @default(uuid())
+  bookingId        String
+  estimateNumber   String             @unique
+  labourCost       Float              @default(0)
+  materialCost     Float              @default(0)
+  additionalCharges Float             @default(0)
+  totalCost        Float              @default(0)
+  estimatedDuration String
+  workIncluded     String
+  workExcluded     String?
+  paymentTerms     String?
+  expiresAt        DateTime
+  status           EstimateStatus     @default(SENT)
+  customerAcceptedAt DateTime?
+  notes            String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  booking          Booking            @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  revisions        EstimateRevision[]
+
+  @@index([bookingId])
+  @@index([status])
+}
+
+model EstimateRevision {
+  id               String   @id @default(uuid())
+  estimateId       String
+  revisionNumber   Int      @default(1)
+  labourCost       Float
+  materialCost     Float
+  additionalCharges Float
+  totalCost        Float
+  changeReason     String
+  createdAt        DateTime @default(now())
+
+  estimate         Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  @@index([estimateId])
+}
+
+model Review {
+  id               String         @id @default(uuid())
+  bookingId        String         @unique
+  customerId       String
+  proProfileId     String
+  overallRating    Int            // 1 to 5
+  punctualityRating Int           // 1 to 5
+  workmanshipRating Int           // 1 to 5
+  communicationRating Int         // 1 to 5
+  valueRating      Int            // 1 to 5
+  comment          String
+  photos           String?        // JSON array of photo URLs
+  proResponse      String?
+  proResponseDate  DateTime?
+  isVerifiedBooking Boolean       @default(true)
+  isModerated      Boolean        @default(false)
+  isFlagged        Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  booking          Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  customer         CustomerProfile @relation("CustomerReviews", fields: [customerId], references: [id], onDelete: Cascade)
+  proProfile       ProfessionalProfile @relation("ProReviews", fields: [proProfileId], references: [id], onDelete: Cascade)
+  reports          ReviewReport[]
+
+  @@index([proProfileId])
+  @@index([overallRating])
+}
+
+model ReviewReport {
+  id          String   @id @default(uuid())
+  reviewId    String
+  reportedBy  String   // User id
+  reason      String
+  status      String   @default("PENDING") // PENDING, DISMISSED, ACTIONED
+  actionTaken String?
+  createdAt   DateTime @default(now())
+
+  review      Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [reportedBy], references: [id], onDelete: Cascade)
+
+  @@index([reviewId])
+}
+
+model SavedProfessional {
+  id           String              @id @default(uuid())
+  customerId   String
+  proProfileId String
+  createdAt    DateTime            @default(now())
+
+  customer     CustomerProfile     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  proProfile   ProfessionalProfile @relation(fields: [proProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, proProfileId])
+}
+
+model VerificationRecord {
+  id             String              @id @default(uuid())
+  proProfileId   String
+  stage          String              // IDENTITY, BUSINESS, QUALIFICATIONS, REFERENCES, WORK_HISTORY
+  documentType   String?
+  documentNumber String?
+  status         String              @default("PENDING") // PENDING, APPROVED, REJECTED
+  verifiedBy     String?             // Admin user id
+  verifiedAt     DateTime?
+  rejectionReason String?
+  notes          String?
+  createdAt      DateTime            @default(now())
+
+  proProfile     ProfessionalProfile @relation(fields: [proProfileId], references: [id], onDelete: Cascade)
+
+  @@index([proProfileId])
+  @@index([status])
+}
+
+model CustomerComplaint {
+  id             String            @id @default(uuid())
+  complaintNumber String           @unique
+  bookingId      String
+  customerId     String
+  proProfileId   String
+  category       ComplaintCategory
+  description    String
+  status         ComplaintStatus   @default(OPEN)
+  resolutionNotes String?
+  resolvedBy     String?           // Admin user id
+  resolvedAt     DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  booking        Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  customer       User              @relation("ComplaintsSubmitted", fields: [customerId], references: [id], onDelete: Cascade)
+  proProfile     ProfessionalProfile @relation("ComplaintsReceived", fields: [proProfileId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([status])
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  title       String
+  message     String
+  type        String   // BOOKING, ESTIMATE, REVIEW, VERIFICATION, COMPLAINT, SYSTEM
+  linkUrl     String?
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  action     String   // e.g., VERIFY_PRO, MODERATE_REVIEW, RESOLVE_COMPLAINT, CHANGE_STATUS
+  entityType String   // USER, PRO, BOOKING, REVIEW, ESTIMATE, COMPLAINT
+  entityId   String
+  details    String?  // JSON or text details
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
