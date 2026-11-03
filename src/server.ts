@@ -74,7 +74,7 @@ async function parseBody(req: http.IncomingMessage): Promise<any> {
   });
 }
 
-const server = http.createServer(async (req, res) => {
+async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   try {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
     const pathname = url.pathname;
@@ -107,18 +107,22 @@ const server = http.createServer(async (req, res) => {
 
     // 1. Static Asset Serving
     if (pathname === '/css/app.css') {
-      const cssPath = path.join(process.cwd(), 'src', 'public', 'css', 'app.css');
-      if (fs.existsSync(cssPath)) {
+      const cssPath = path.join(process.cwd(), 'public', 'css', 'app.css');
+      const fallbackPath = path.join(process.cwd(), 'src', 'public', 'css', 'app.css');
+      const targetPath = fs.existsSync(cssPath) ? cssPath : fallbackPath;
+      if (fs.existsSync(targetPath)) {
         res.writeHead(200, { 'Content-Type': 'text/css' });
-        return res.end(fs.readFileSync(cssPath));
+        return res.end(fs.readFileSync(targetPath));
       }
     }
 
     if (pathname === '/js/app.js') {
-      const jsPath = path.join(process.cwd(), 'src', 'public', 'js', 'app.js');
-      if (fs.existsSync(jsPath)) {
+      const jsPath = path.join(process.cwd(), 'public', 'js', 'app.js');
+      const fallbackPath = path.join(process.cwd(), 'src', 'public', 'js', 'app.js');
+      const targetPath = fs.existsSync(jsPath) ? jsPath : fallbackPath;
+      if (fs.existsSync(targetPath)) {
         res.writeHead(200, { 'Content-Type': 'application/javascript' });
-        return res.end(fs.readFileSync(jsPath));
+        return res.end(fs.readFileSync(targetPath));
       }
     }
 
@@ -430,7 +434,9 @@ const server = http.createServer(async (req, res) => {
       res.end('<h1>500 - Internal Server Error</h1><p>An unexpected error occurred. Please try again.</p>');
     }
   }
-});
+}
+
+const server = http.createServer(handleRequest);
 
 // Start the server if executed directly
 if (process.argv[1] && (process.argv[1].endsWith('server.ts') || process.argv[1].endsWith('server.js'))) {
@@ -441,4 +447,5 @@ if (process.argv[1] && (process.argv[1].endsWith('server.ts') || process.argv[1]
   });
 }
 
-export { server };
+export { server, handleRequest };
+export default handleRequest;

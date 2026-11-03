@@ -3,18 +3,33 @@ import { DatabaseSync } from 'node:sqlite';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 
-const DB_PATH = process.env.SQLITE_DB_PATH || path.join(process.cwd(), 'data', 'workdone.db');
+const isVercel = Boolean(process.env.VERCEL || process.env.NOW_REGION);
+const DB_PATH = process.env.SQLITE_DB_PATH || (isVercel ? '/tmp/workdone.db' : path.join(process.cwd(), 'data', 'workdone.db'));
 
 // Ensure database directory exists
 const dbDir = path.dirname(DB_PATH);
 if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
+  try {
+    fs.mkdirSync(dbDir, { recursive: true });
+  } catch (e) {
+    console.warn('[DB] Failed to create dbDir:', e);
+  }
 }
 
 let dbInstance: DatabaseSync | null = null;
 
 export function getDb(): DatabaseSync {
   if (!dbInstance) {
+    if (isVercel && !fs.existsSync(DB_PATH)) {
+      const srcDb = path.join(process.cwd(), 'data', 'workdone.db');
+      if (fs.existsSync(srcDb)) {
+        try {
+          fs.copyFileSync(srcDb, DB_PATH);
+        } catch (e) {
+          console.warn('[DB] Could not copy existing DB to /tmp, will initialize fresh:', e);
+        }
+      }
+    }
     dbInstance = new DatabaseSync(DB_PATH);
     dbInstance.exec('PRAGMA foreign_keys = ON;');
     dbInstance.exec('PRAGMA journal_mode = WAL;');
