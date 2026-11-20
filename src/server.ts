@@ -77,7 +77,11 @@ async function parseBody(req: http.IncomingMessage): Promise<any> {
 async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   try {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-    const pathname = url.pathname;
+    const rawMatched = req.headers['x-matched-path'] as string;
+    let pathname = url.pathname;
+    if ((pathname === '/api' || pathname === '/api/' || pathname === '/api/index') && rawMatched && rawMatched !== '/api' && rawMatched !== '/api/index') {
+      pathname = rawMatched;
+    }
 
     // Cookie & session parsing
     const cookies = parseCookies(req.headers.cookie);
